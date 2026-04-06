@@ -1,0 +1,2 @@
+"""NiceGUI user interface package."""
+
