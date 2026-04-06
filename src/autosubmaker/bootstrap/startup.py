@@ -6,7 +6,10 @@ from autosubmaker.config.app_paths import AppPaths
 from autosubmaker.config.app_settings import AppSettings
 from autosubmaker.config.settings_store import SettingsStore
 from autosubmaker.models.app_status import StartupState
+from autosubmaker.services.audio_extract_service import AudioExtractService
 from autosubmaker.services.environment_service import EnvironmentService
+from autosubmaker.services.media_probe_service import MediaProbeService
+from autosubmaker.services.transcription_service import TranscriptionService
 from autosubmaker.services.whisper_model_service import WhisperModelService
 from autosubmaker.utils.logger import LogStore
 
@@ -17,6 +20,9 @@ class BootstrapContext:
     settings_store: SettingsStore
     settings: AppSettings
     environment_service: EnvironmentService
+    media_probe_service: MediaProbeService
+    audio_extract_service: AudioExtractService
+    transcription_service: TranscriptionService
     whisper_model_service: WhisperModelService
     startup_state: StartupState
     log_store: LogStore
@@ -29,7 +35,14 @@ def bootstrap_application() -> BootstrapContext:
     log_store = LogStore(paths.log_file)
     settings_store = SettingsStore(paths)
     settings = settings_store.load()
+    media_probe_service = MediaProbeService()
+    audio_extract_service = AudioExtractService(paths, log_store)
     whisper_model_service = WhisperModelService(paths, log_store)
+    transcription_service = TranscriptionService(
+        paths=paths,
+        whisper_model_service=whisper_model_service,
+        log_store=log_store,
+    )
 
     if not settings.output_dir:
         settings.output_dir = str(paths.outputs_dir)
@@ -48,6 +61,9 @@ def bootstrap_application() -> BootstrapContext:
         settings_store=settings_store,
         settings=settings,
         environment_service=environment_service,
+        media_probe_service=media_probe_service,
+        audio_extract_service=audio_extract_service,
+        transcription_service=transcription_service,
         whisper_model_service=whisper_model_service,
         startup_state=startup_state,
         log_store=log_store,

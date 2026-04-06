@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from autosubmaker.models.media_info import MediaInfo
 
 
 class JobStatus(str, Enum):
@@ -32,6 +36,10 @@ class Job:
     resolution: str = "-"
     duration_label: str = "-"
     orientation: VideoOrientation = VideoOrientation.UNKNOWN
+    audio_path: str | None = None
+    transcription_text_path: str | None = None
+    transcription_json_path: str | None = None
+    transcription_language: str | None = None
     error_message: str | None = None
 
     @property
@@ -46,6 +54,11 @@ class Job:
             return "字幕 + 焼きこみ"
         return "焼きこみ"
 
+    def apply_media_info(self, media_info: "MediaInfo") -> None:
+        self.resolution = media_info.resolution_label
+        self.duration_label = media_info.duration_label
+        self.orientation = media_info.orientation
+
     def to_row(self) -> dict[str, str | int]:
         return {
             "status": self.status.value,
@@ -57,4 +70,3 @@ class Job:
             "progress": f"{self.progress}%",
             "output_dir": self.output_dir,
         }
-
