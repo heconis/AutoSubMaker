@@ -40,6 +40,8 @@ class Job:
     transcription_text_path: str | None = None
     transcription_json_path: str | None = None
     transcription_language: str | None = None
+    srt_path: str | None = None
+    ass_path: str | None = None
     error_message: str | None = None
 
     @property

@@ -312,12 +312,23 @@ class MainPage:
                     job.transcription_text_path = transcription_result.text_path
                     job.transcription_json_path = transcription_result.json_path
                     job.transcription_language = transcription_result.language
+                    job.progress = 80
+                    self.job_table.render.refresh()
+
+                    subtitle_result = await asyncio.to_thread(
+                        self.context.bootstrap.subtitle_service.generate,
+                        job,
+                        transcription_result,
+                        self.context.bootstrap.settings,
+                    )
+                    job.srt_path = subtitle_result.srt_path
+                    job.ass_path = subtitle_result.ass_path
                     job.progress = 100
                     job.status = JobStatus.COMPLETED
                     success_count += 1
                     self.context.bootstrap.log_store.add(
-                        "文字起こしまで完了: "
-                        f"{job.file_name} -> {transcription_result.text_path}"
+                        "字幕生成まで完了: "
+                        f"{job.file_name} -> {subtitle_result.srt_path or subtitle_result.ass_path}"
                     )
                 except Exception as exc:
                     job.status = JobStatus.FAILED
@@ -337,11 +348,11 @@ class MainPage:
 
         if failure_count:
             self._notify(
-                f"文字起こしが完了しました。成功 {success_count} 件 / 失敗 {failure_count} 件",
+                f"字幕ファイル生成が完了しました。成功 {success_count} 件 / 失敗 {failure_count} 件",
                 type="warning",
             )
         else:
-            self._notify(f"文字起こしが完了しました。成功 {success_count} 件", type="positive")
+            self._notify(f"字幕ファイル生成が完了しました。成功 {success_count} 件", type="positive")
 
     def clear_completed(self) -> None:
         cleared = self.context.queue_service.clear_completed()
