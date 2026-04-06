@@ -323,13 +323,29 @@ class MainPage:
                     )
                     job.srt_path = subtitle_result.srt_path
                     job.ass_path = subtitle_result.ass_path
-                    job.progress = 100
+                    job.progress = 85
+                    self.job_table.render.refresh()
+
+                    if job.burn_in_video:
+                        output_video_path = await asyncio.to_thread(
+                            self.context.bootstrap.burnin_service.burn_in,
+                            job,
+                            ffmpeg_path,
+                            self.context.bootstrap.settings,
+                        )
+                        job.output_video_path = str(output_video_path)
+                        job.progress = 100
+                        self.context.bootstrap.log_store.add(
+                            f"焼きこみまで完了: {job.file_name} -> {output_video_path}"
+                        )
+                    else:
+                        job.progress = 100
+                        self.context.bootstrap.log_store.add(
+                            "字幕生成まで完了: "
+                            f"{job.file_name} -> {subtitle_result.srt_path or subtitle_result.ass_path}"
+                        )
                     job.status = JobStatus.COMPLETED
                     success_count += 1
-                    self.context.bootstrap.log_store.add(
-                        "字幕生成まで完了: "
-                        f"{job.file_name} -> {subtitle_result.srt_path or subtitle_result.ass_path}"
-                    )
                 except Exception as exc:
                     job.status = JobStatus.FAILED
                     job.error_message = str(exc)
@@ -348,11 +364,11 @@ class MainPage:
 
         if failure_count:
             self._notify(
-                f"字幕ファイル生成が完了しました。成功 {success_count} 件 / 失敗 {failure_count} 件",
+                f"処理が完了しました。成功 {success_count} 件 / 失敗 {failure_count} 件",
                 type="warning",
             )
         else:
-            self._notify(f"字幕ファイル生成が完了しました。成功 {success_count} 件", type="positive")
+            self._notify(f"処理が完了しました。成功 {success_count} 件", type="positive")
 
     def clear_completed(self) -> None:
         cleared = self.context.queue_service.clear_completed()

@@ -7,6 +7,7 @@ from autosubmaker.config.app_settings import AppSettings
 from autosubmaker.config.settings_store import SettingsStore
 from autosubmaker.models.app_status import StartupState
 from autosubmaker.services.audio_extract_service import AudioExtractService
+from autosubmaker.services.burnin_service import BurnInService
 from autosubmaker.services.environment_service import EnvironmentService
 from autosubmaker.services.media_probe_service import MediaProbeService
 from autosubmaker.services.subtitle_service import SubtitleService
@@ -25,6 +26,7 @@ class BootstrapContext:
     audio_extract_service: AudioExtractService
     transcription_service: TranscriptionService
     subtitle_service: SubtitleService
+    burnin_service: BurnInService
     whisper_model_service: WhisperModelService
     startup_state: StartupState
     log_store: LogStore
@@ -46,6 +48,7 @@ def bootstrap_application() -> BootstrapContext:
         log_store=log_store,
     )
     subtitle_service = SubtitleService(log_store=log_store)
+    burnin_service = BurnInService(paths=paths, log_store=log_store)
 
     if not settings.output_dir:
         settings.output_dir = str(paths.outputs_dir)
@@ -68,6 +71,7 @@ def bootstrap_application() -> BootstrapContext:
         audio_extract_service=audio_extract_service,
         transcription_service=transcription_service,
         subtitle_service=subtitle_service,
+        burnin_service=burnin_service,
         whisper_model_service=whisper_model_service,
         startup_state=startup_state,
         log_store=log_store,

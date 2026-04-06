@@ -42,6 +42,7 @@ class Job:
     transcription_language: str | None = None
     srt_path: str | None = None
     ass_path: str | None = None
+    output_video_path: str | None = None
     error_message: str | None = None
 
     @property
