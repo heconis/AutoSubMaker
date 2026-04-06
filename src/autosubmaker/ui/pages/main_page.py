@@ -52,6 +52,7 @@ class MainPage:
         self.settings_panel = SettingsPanel(
             settings=self.context.bootstrap.settings,
             on_settings_changed=self.on_settings_changed,
+            available_fonts=self.context.bootstrap.installed_font_names,
         )
         self.setup_dialog = SetupDialog(
             startup_state_getter=self.get_startup_state,
@@ -353,6 +354,16 @@ class MainPage:
                     self.context.bootstrap.log_store.add(
                         f"処理失敗: {job.file_name} -> {job.error_message}"
                     )
+                finally:
+                    if not self.context.bootstrap.settings.subtitles.keep_temp_files:
+                        removed = await asyncio.to_thread(
+                            self.context.bootstrap.temp_file_service.cleanup_job_temp_dir,
+                            job.id,
+                        )
+                        if removed:
+                            job.audio_path = None
+                            job.transcription_text_path = None
+                            job.transcription_json_path = None
 
                 self.render_action_bar.refresh()
                 self.job_table.render.refresh()

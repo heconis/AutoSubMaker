@@ -9,8 +9,10 @@ from autosubmaker.models.app_status import StartupState
 from autosubmaker.services.audio_extract_service import AudioExtractService
 from autosubmaker.services.burnin_service import BurnInService
 from autosubmaker.services.environment_service import EnvironmentService
+from autosubmaker.services.font_catalog_service import FontCatalogService
 from autosubmaker.services.media_probe_service import MediaProbeService
 from autosubmaker.services.subtitle_service import SubtitleService
+from autosubmaker.services.temp_file_service import TempFileService
 from autosubmaker.services.transcription_service import TranscriptionService
 from autosubmaker.services.whisper_model_service import WhisperModelService
 from autosubmaker.utils.logger import LogStore
@@ -27,6 +29,9 @@ class BootstrapContext:
     transcription_service: TranscriptionService
     subtitle_service: SubtitleService
     burnin_service: BurnInService
+    temp_file_service: TempFileService
+    font_catalog_service: FontCatalogService
+    installed_font_names: tuple[str, ...]
     whisper_model_service: WhisperModelService
     startup_state: StartupState
     log_store: LogStore
@@ -49,6 +54,9 @@ def bootstrap_application() -> BootstrapContext:
     )
     subtitle_service = SubtitleService(log_store=log_store)
     burnin_service = BurnInService(paths=paths, log_store=log_store)
+    temp_file_service = TempFileService(paths=paths, log_store=log_store)
+    font_catalog_service = FontCatalogService()
+    installed_font_names = tuple(font_catalog_service.list_fonts())
 
     if not settings.output_dir:
         settings.output_dir = str(paths.outputs_dir)
@@ -61,6 +69,7 @@ def bootstrap_application() -> BootstrapContext:
     log_store.add(f"出力先: {settings.output_dir}")
     log_store.add(f"FFmpeg: {startup_state.ffmpeg.message}")
     log_store.add(f"Whisper model: {startup_state.whisper_model.message}")
+    log_store.add(f"利用可能フォント数: {len(installed_font_names)}")
 
     return BootstrapContext(
         paths=paths,
@@ -72,6 +81,9 @@ def bootstrap_application() -> BootstrapContext:
         transcription_service=transcription_service,
         subtitle_service=subtitle_service,
         burnin_service=burnin_service,
+        temp_file_service=temp_file_service,
+        font_catalog_service=font_catalog_service,
+        installed_font_names=installed_font_names,
         whisper_model_service=whisper_model_service,
         startup_state=startup_state,
         log_store=log_store,

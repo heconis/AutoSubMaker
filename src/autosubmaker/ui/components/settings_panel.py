@@ -5,6 +5,7 @@ from typing import Callable
 from nicegui import ui
 
 from autosubmaker.config.app_settings import AppSettings
+from autosubmaker.models.transcription_options import AVAILABLE_MODEL_SIZES
 
 
 class SettingsPanel:
@@ -12,9 +13,11 @@ class SettingsPanel:
         self,
         settings: AppSettings,
         on_settings_changed: Callable[[str], None],
+        available_fonts: list[str] | tuple[str, ...],
     ) -> None:
         self.settings = settings
         self.on_settings_changed = on_settings_changed
+        self.available_fonts = self._build_font_options(available_fonts)
 
     def build(self) -> None:
         with ui.column().classes("w-[360px] max-w-full gap-4"):
@@ -117,7 +120,7 @@ class SettingsPanel:
             )
 
             model_size = ui.select(
-                ["tiny", "base", "small", "medium", "large"],
+                list(AVAILABLE_MODEL_SIZES),
                 value=self.settings.transcription.model_size,
                 label="モデルサイズ",
             ).classes("w-full")
@@ -253,9 +256,14 @@ class SettingsPanel:
         with ui.card().classes("w-full rounded-2xl shadow-sm"):
             ui.label("字幕スタイル").classes("text-lg font-semibold")
 
-            font_name = ui.input("フォント名", value=self.settings.style.font_name).classes("w-full")
+            font_name = ui.select(
+                self.available_fonts,
+                value=self.settings.style.font_name,
+                label="フォント名",
+            ).classes("w-full")
+            font_name.props("use-input input-debounce=0")
             font_name.on(
-                "change",
+                "update:model-value",
                 lambda _e: self._apply(
                     lambda: setattr(self.settings.style, "font_name", font_name.value or "Yu Gothic UI"),
                     "フォント名を保存しました。",
@@ -299,7 +307,52 @@ class SettingsPanel:
                 ),
             )
 
+            outline_width = ui.number(
+                "縁取り太さ",
+                value=self.settings.style.outline_width,
+                min=0,
+                max=12,
+                step=1,
+            ).classes("w-full")
+            outline_width.on(
+                "change",
+                lambda _e: self._apply(
+                    lambda: setattr(
+                        self.settings.style,
+                        "outline_width",
+                        int(outline_width.value or 3),
+                    ),
+                    "縁取り太さを保存しました。",
+                ),
+            )
+
+            bottom_margin = ui.number(
+                "画面下からの余白",
+                value=self.settings.style.bottom_margin,
+                min=0,
+                max=600,
+                step=1,
+            ).classes("w-full")
+            bottom_margin.on(
+                "change",
+                lambda _e: self._apply(
+                    lambda: setattr(
+                        self.settings.style,
+                        "bottom_margin",
+                        int(bottom_margin.value or 72),
+                    ),
+                    "画面下からの余白を保存しました。",
+                ),
+            )
+
     def _apply(self, mutation: Callable[[], None], message: str) -> None:
         mutation()
         self.on_settings_changed(message)
 
+    def _build_font_options(self, available_fonts: list[str] | tuple[str, ...]) -> list[str]:
+        fonts = [font for font in available_fonts if font]
+        if self.settings.style.font_name and self.settings.style.font_name not in fonts:
+            fonts.insert(0, self.settings.style.font_name)
+        if not fonts:
+            fonts.append("Yu Gothic UI")
+        return list(dict.fromkeys(fonts))
