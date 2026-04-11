@@ -5,7 +5,11 @@ from pathlib import Path
 from autosubmaker.config.app_settings import AppSettings
 from autosubmaker.models.job import Job, VideoOrientation
 from autosubmaker.models.subtitle_result import SubtitleCue
-from autosubmaker.models.transcription_result import TranscriptionResult, TranscriptionSegment
+from autosubmaker.models.transcription_result import (
+    TranscriptionResult,
+    TranscriptionSegment,
+    TranscriptionWord,
+)
 from autosubmaker.services.subtitle_service import SubtitleService
 from autosubmaker.utils.logger import LogStore
 
@@ -143,3 +147,40 @@ def test_subtitle_service_render_srt_uses_timecodes() -> None:
 
     assert "00:00:01,250" in text
     assert "二行目" in text
+
+
+def test_subtitle_service_preserves_silence_between_word_groups(tmp_path: Path) -> None:
+    service = build_service(tmp_path)
+    settings = AppSettings()
+    settings.subtitles.landscape_chars_per_line = 18
+    settings.subtitles.max_lines = 2
+    job = Job(
+        input_path=str(tmp_path / "silence.mp4"),
+        output_dir=str(tmp_path / "outputs"),
+        burn_in_video=False,
+        subtitle_only=True,
+    )
+    job.orientation = VideoOrientation.LANDSCAPE
+    transcription_result = TranscriptionResult(
+        language="ja",
+        duration_seconds=4.0,
+        segments=[
+            TranscriptionSegment(
+                index=1,
+                start_seconds=0.0,
+                end_seconds=4.0,
+                text="こんにちはこんばんは",
+                words=[
+                    TranscriptionWord(0.0, 0.5, "こんにちは"),
+                    TranscriptionWord(3.0, 3.5, "こんばんは"),
+                ],
+            )
+        ],
+    )
+
+    cues = service.generate(job, transcription_result, settings).cues
+
+    assert len(cues) == 2
+    assert cues[0].text == "こんにちは"
+    assert cues[0].end_seconds <= 0.5
+    assert cues[1].start_seconds >= 3.0

@@ -11,6 +11,7 @@ from autosubmaker.integrations.whisper_runner import WhisperRunner
 from autosubmaker.models.transcription_result import (
     TranscriptionResult,
     TranscriptionSegment,
+    TranscriptionWord,
 )
 from autosubmaker.services.whisper_model_service import WhisperModelService
 from autosubmaker.utils.logger import LogStore
@@ -85,6 +86,7 @@ class TranscriptionService:
                     language=language,
                     device=device,
                     vad_filter=True,
+                    word_timestamps=True,
                 )
             except Exception as exc:
                 last_error = exc
@@ -115,12 +117,14 @@ class TranscriptionService:
                 start_seconds,
                 float(getattr(segment, "end", start_seconds) or start_seconds),
             )
+            words = self._extract_words(segment)
             segments.append(
                 TranscriptionSegment(
                     index=len(segments) + 1,
                     start_seconds=start_seconds,
                     end_seconds=end_seconds,
                     text=text,
+                    words=words,
                 )
             )
 
@@ -137,6 +141,30 @@ class TranscriptionService:
             duration_seconds=duration_seconds,
             segments=segments,
         )
+
+    def _extract_words(self, segment: object) -> list[TranscriptionWord]:
+        raw_words = getattr(segment, "words", None) or []
+        words: list[TranscriptionWord] = []
+        for raw_word in raw_words:
+            raw_text = str(getattr(raw_word, "word", "") or "")
+            if not normalize_text(raw_text):
+                continue
+
+            start_seconds = max(0.0, float(getattr(raw_word, "start", 0.0) or 0.0))
+            end_seconds = max(
+                start_seconds,
+                float(getattr(raw_word, "end", start_seconds) or start_seconds),
+            )
+            probability = getattr(raw_word, "probability", None)
+            words.append(
+                TranscriptionWord(
+                    start_seconds=start_seconds,
+                    end_seconds=end_seconds,
+                    text=raw_text,
+                    probability=float(probability) if probability is not None else None,
+                )
+            )
+        return words
 
     def _build_output_paths(
         self,

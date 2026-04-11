@@ -6,13 +6,20 @@ from pathlib import Path
 from autosubmaker.config.app_settings import AppSettings
 from autosubmaker.models.job import Job, VideoOrientation
 from autosubmaker.models.subtitle_result import SubtitleCue, SubtitleResult
-from autosubmaker.models.transcription_result import TranscriptionResult
+from autosubmaker.models.transcription_result import (
+    TranscriptionResult,
+    TranscriptionSegment,
+    TranscriptionWord,
+)
 from autosubmaker.utils.logger import LogStore
+from autosubmaker.utils.text_splitter import normalize_text
 from autosubmaker.utils.text_splitter import split_into_subtitle_blocks
 from autosubmaker.utils.timecode import format_ass_timecode, format_srt_timecode
 
 
 class SubtitleService:
+    SILENCE_GAP_SECONDS = 0.35
+
     def __init__(self, log_store: LogStore) -> None:
         self.log_store = log_store
 
@@ -68,6 +75,19 @@ class SubtitleService:
 
         cues: list[SubtitleCue] = []
         for segment in transcription_result.segments:
+            if segment.words:
+                cues.extend(
+                    self._build_cues_from_words(
+                        segment=segment,
+                        start_index=len(cues) + 1,
+                        max_chars=max_chars,
+                        max_lines=max_lines,
+                        min_duration=min_duration,
+                        max_duration=max_duration,
+                    )
+                )
+                continue
+
             blocks = split_into_subtitle_blocks(
                 segment.text,
                 max_chars=max_chars,
@@ -94,6 +114,160 @@ class SubtitleService:
                 cues.append(cue)
 
         return cues
+
+    def _build_cues_from_words(
+        self,
+        *,
+        segment: TranscriptionSegment,
+        start_index: int,
+        max_chars: int,
+        max_lines: int,
+        min_duration: float,
+        max_duration: float,
+    ) -> list[SubtitleCue]:
+        cues: list[SubtitleCue] = []
+        current_words: list[TranscriptionWord] = []
+
+        for word in segment.words:
+            if not current_words:
+                current_words = [word]
+                continue
+
+            gap = max(0.0, word.start_seconds - current_words[-1].end_seconds)
+            candidate_words = [*current_words, word]
+            candidate_blocks = split_into_subtitle_blocks(
+                self._compose_words_text(candidate_words),
+                max_chars=max_chars,
+                max_lines=max_lines,
+            )
+
+            if gap >= self.SILENCE_GAP_SECONDS or len(candidate_blocks) > 1:
+                cues.extend(
+                    self._finalize_word_group(
+                        words=current_words,
+                        start_index=start_index + len(cues),
+                        max_chars=max_chars,
+                        max_lines=max_lines,
+                        min_duration=min_duration,
+                        max_duration=max_duration,
+                    )
+                )
+                current_words = [word]
+                continue
+
+            current_words.append(word)
+
+        if current_words:
+            cues.extend(
+                self._finalize_word_group(
+                    words=current_words,
+                    start_index=start_index + len(cues),
+                    max_chars=max_chars,
+                    max_lines=max_lines,
+                    min_duration=min_duration,
+                    max_duration=max_duration,
+                )
+            )
+
+        return cues
+
+    def _finalize_word_group(
+        self,
+        *,
+        words: list[TranscriptionWord],
+        start_index: int,
+        max_chars: int,
+        max_lines: int,
+        min_duration: float,
+        max_duration: float,
+    ) -> list[SubtitleCue]:
+        if not words:
+            return []
+
+        text = self._compose_words_text(words)
+        blocks = split_into_subtitle_blocks(
+            text,
+            max_chars=max_chars,
+            max_lines=max_lines,
+        )
+        if len(blocks) <= 1:
+            cue_text = blocks[0] if blocks else text
+            return [
+                SubtitleCue(
+                    index=start_index,
+                    start_seconds=words[0].start_seconds,
+                    end_seconds=self._resolve_word_group_end(
+                        words,
+                        min_duration=min_duration,
+                        max_duration=max_duration,
+                    ),
+                    text=cue_text,
+                )
+            ]
+
+        return self._build_text_only_cues(
+            text=text,
+            start_seconds=words[0].start_seconds,
+            end_seconds=words[-1].end_seconds,
+            start_index=start_index,
+            max_chars=max_chars,
+            max_lines=max_lines,
+            min_duration=min_duration,
+            max_duration=max_duration,
+        )
+
+    def _build_text_only_cues(
+        self,
+        *,
+        text: str,
+        start_seconds: float,
+        end_seconds: float,
+        start_index: int,
+        max_chars: int,
+        max_lines: int,
+        min_duration: float,
+        max_duration: float,
+    ) -> list[SubtitleCue]:
+        blocks = split_into_subtitle_blocks(
+            text,
+            max_chars=max_chars,
+            max_lines=max_lines,
+        )
+        durations = self._distribute_durations(
+            blocks=blocks,
+            total_duration=max(0.0, end_seconds - start_seconds),
+            min_duration=min_duration,
+            max_duration=max_duration,
+        )
+        cues: list[SubtitleCue] = []
+        current_start = start_seconds
+        for offset, (block, duration) in enumerate(zip(blocks, durations)):
+            cue = SubtitleCue(
+                index=start_index + offset,
+                start_seconds=max(0.0, current_start),
+                end_seconds=max(current_start + duration, current_start + 0.1),
+                text=block,
+            )
+            current_start = cue.end_seconds
+            cues.append(cue)
+        return cues
+
+    def _compose_words_text(self, words: list[TranscriptionWord]) -> str:
+        return normalize_text("".join(word.text for word in words))
+
+    def _resolve_word_group_end(
+        self,
+        words: list[TranscriptionWord],
+        *,
+        min_duration: float,
+        max_duration: float,
+    ) -> float:
+        start_seconds = words[0].start_seconds
+        end_seconds = words[-1].end_seconds
+        duration = max(0.0, end_seconds - start_seconds)
+        if duration <= 0:
+            return start_seconds + min_duration
+        return start_seconds + min(duration, max_duration)
 
     def _distribute_durations(
         self,

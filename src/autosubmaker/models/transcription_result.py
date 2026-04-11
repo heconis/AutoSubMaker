@@ -4,11 +4,28 @@ from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
+class TranscriptionWord:
+    start_seconds: float
+    end_seconds: float
+    text: str
+    probability: float | None = None
+
+    def to_dict(self) -> dict[str, float | str | None]:
+        return {
+            "start_seconds": self.start_seconds,
+            "end_seconds": self.end_seconds,
+            "text": self.text,
+            "probability": self.probability,
+        }
+
+
+@dataclass(slots=True)
 class TranscriptionSegment:
     index: int
     start_seconds: float
     end_seconds: float
     text: str
+    words: list[TranscriptionWord] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, float | int | str]:
         return {
@@ -16,6 +33,7 @@ class TranscriptionSegment:
             "start_seconds": self.start_seconds,
             "end_seconds": self.end_seconds,
             "text": self.text,
+            "words": [word.to_dict() for word in self.words],
         }
 
 

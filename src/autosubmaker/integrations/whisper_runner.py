@@ -16,6 +16,7 @@ class WhisperRunner:
         language: str | None,
         device: str,
         vad_filter: bool = True,
+        word_timestamps: bool = True,
     ) -> tuple[Any, Any]:
         model = self._get_model(model_size_or_path, device)
         return model.transcribe(
@@ -23,6 +24,7 @@ class WhisperRunner:
             language=language,
             task="transcribe",
             vad_filter=vad_filter,
+            word_timestamps=word_timestamps,
         )
 
     def _get_model(self, model_size_or_path: str | Path, device: str) -> Any:

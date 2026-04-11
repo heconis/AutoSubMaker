@@ -6,7 +6,10 @@ import pytest
 
 from autosubmaker.config.app_paths import AppPaths
 from autosubmaker.config.app_settings import AppSettings
-from autosubmaker.models.transcription_result import TranscriptionResult, TranscriptionSegment
+from autosubmaker.models.transcription_result import (
+    TranscriptionResult,
+    TranscriptionSegment,
+)
 from autosubmaker.services.transcription_service import TranscriptionService
 from autosubmaker.utils.logger import LogStore
 
@@ -20,10 +23,19 @@ class FakeWhisperModelService:
 
 
 class FakeSegment:
-    def __init__(self, start: float, end: float, text: str) -> None:
+    def __init__(self, start: float, end: float, text: str, words: list[object] | None = None) -> None:
         self.start = start
         self.end = end
         self.text = text
+        self.words = words or []
+
+
+class FakeWord:
+    def __init__(self, start: float, end: float, word: str, probability: float = 0.9) -> None:
+        self.start = start
+        self.end = end
+        self.word = word
+        self.probability = probability
 
 
 class FakeInfo:
@@ -44,6 +56,7 @@ class FakeRunner:
         language: str | None,
         device: str,
         vad_filter: bool = True,
+        word_timestamps: bool = True,
     ) -> tuple[list[FakeSegment], FakeInfo]:
         self.calls.append(
             {
@@ -52,13 +65,24 @@ class FakeRunner:
                 "language": language,
                 "device": device,
                 "vad_filter": str(vad_filter),
+                "word_timestamps": str(word_timestamps),
             }
         )
         return (
             [
-                FakeSegment(0.0, 1.2, "  こんにちは   "),
+                FakeSegment(
+                    0.0,
+                    1.2,
+                    "  こんにちは   ",
+                    words=[FakeWord(0.0, 0.6, "こんにちは")],
+                ),
                 FakeSegment(1.2, 2.4, ""),
-                FakeSegment(2.5, 4.0, "世界です。"),
+                FakeSegment(
+                    2.5,
+                    4.0,
+                    "世界です。",
+                    words=[FakeWord(2.5, 3.4, "世界です。")],
+                ),
             ],
             FakeInfo(language="ja", duration=4.0),
         )
@@ -73,6 +97,7 @@ class FallbackRunner(FakeRunner):
         language: str | None,
         device: str,
         vad_filter: bool = True,
+        word_timestamps: bool = True,
     ) -> tuple[list[FakeSegment], FakeInfo]:
         if device == "cuda":
             self.calls.append(
@@ -82,6 +107,7 @@ class FallbackRunner(FakeRunner):
                     "language": language,
                     "device": device,
                     "vad_filter": str(vad_filter),
+                    "word_timestamps": str(word_timestamps),
                 }
             )
             raise RuntimeError("CUDA unavailable")
@@ -91,6 +117,7 @@ class FallbackRunner(FakeRunner):
             language=language,
             device=device,
             vad_filter=vad_filter,
+            word_timestamps=word_timestamps,
         )
 
 
@@ -137,9 +164,12 @@ def test_transcription_service_writes_text_and_json_outputs(tmp_path: Path) -> N
 
     assert result.language == "ja"
     assert [segment.text for segment in result.segments] == ["こんにちは", "世界です。"]
+    assert result.segments[0].words[0].text == "こんにちは"
+    assert result.segments[1].words[0].start_seconds == 2.5
     assert result.text_path is not None
     assert result.json_path is not None
     assert Path(result.text_path).read_text(encoding="utf-8") == "こんにちは\n世界です。"
+    assert '"words": [' in Path(result.json_path).read_text(encoding="utf-8")
     assert '"language": "ja"' in Path(result.json_path).read_text(encoding="utf-8")
     assert runner.calls == [
         {
@@ -148,6 +178,7 @@ def test_transcription_service_writes_text_and_json_outputs(tmp_path: Path) -> N
             "language": "ja",
             "device": "auto",
             "vad_filter": "True",
+            "word_timestamps": "True",
         }
     ]
 
